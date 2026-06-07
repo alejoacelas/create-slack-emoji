@@ -7,7 +7,7 @@ description: "Create and proof tiny Slack custom emoji from a phrase, theme, vib
 
 Make tiny, high-signal Slack reaction emoji. This file is the source of truth; do not start by reading extra references.
 
-Default output goes in `./slack-emojis/` relative to the current working directory, not inside the skill folder. The helper creates `slack-emojis/generated/<run>/` for final assets and `slack-emojis/work/<run>/` for manifests, gallery state, and intermediates.
+Default output goes in `./slack-emojis/` relative to the current working directory, not inside the skill folder. The helper creates `slack-emojis/generated/<run>/` for final assets and `slack-emojis/work/<run>/` for that run's manifest and intermediates. A single persistent gallery serves the whole `slack-emojis/generated/` tree, so every run's images appear on the same page (grouped by run) at one stable URL; its state (`gallery.url`/`gallery.pid`/`gallery.log`) lives at the `slack-emojis/work/` root and new runs reuse the already-running gallery automatically.
 
 Preference memory path: `<skill-dir>/emoji-preferences.md`. Do not create or edit this file unless the user explicitly approves saving preference notes.
 
@@ -150,7 +150,7 @@ If text comes back wrong after one retry, switch to a pictorial prompt or add th
 - `scripts/check_image_credentials.py` - safe credential preflight; reports provider presence without printing secret values.
 - `scripts/generate_images.py` - parallel image generation from `options.json` via OpenAI (`gpt-image-2`) or Google (`gemini-3.1-flash-image`); keys the `#00ff00` background out to transparency and writes raw model outputs plus Slack-ready PNGs.
 - `scripts/start_batch.py` - one-command batch setup, prompt manifest, gallery start/reuse, and watch mode.
-- `scripts/start_gallery.py` - lower-level gallery launcher.
-- `scripts/serve_gallery.py` - live proofing gallery.
+- `scripts/start_gallery.py` - lower-level launcher for the single persistent gallery (serves `generated/`, state at `work/`).
+- `scripts/serve_gallery.py` - live proofing gallery; serves the whole `generated/` tree on one page, grouped by run.
 - `scripts/prepare_slack_emoji.py` - Slack-ready PNG/GIF exporter.
 - `scripts/slice_contact_sheet.py` - contact-sheet slicer.

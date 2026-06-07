@@ -27,14 +27,18 @@ def parse_args() -> argparse.Namespace:
 def list_images(gallery_dir: Path) -> list[dict]:
     images = []
     gallery_dir.mkdir(parents=True, exist_ok=True)
-    for path in gallery_dir.iterdir():
+    # Recurse so one gallery rooted at generated/ shows every run's files.
+    # The relative path (e.g. "2026-06-07-run/foo.png") is the unique name and
+    # its leading directory is used by the page to group cards by run.
+    for path in gallery_dir.rglob("*"):
         if not path.is_file() or path.suffix.lower() not in IMAGE_EXTENSIONS:
             continue
+        rel = path.relative_to(gallery_dir).as_posix()
         stat = path.stat()
         images.append(
             {
-                "name": path.name,
-                "url": f"/files/{path.name}",
+                "name": rel,
+                "url": f"/files/{rel}",
                 "bytes": stat.st_size,
                 "modified": stat.st_mtime,
             }
@@ -43,7 +47,7 @@ def list_images(gallery_dir: Path) -> list[dict]:
 
 
 def page_html(gallery_dir: Path) -> bytes:
-    title = f"Slack Emoji Proofs - {gallery_dir.name}"
+    title = "Slack Emoji Proofs - all runs"
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -499,11 +503,16 @@ def page_html(gallery_dir: Path) -> bytes:
       return (bytes / 1024).toFixed(1) + "KB";
     }}
 
+    function baseName(name) {{
+      return name.includes("/") ? name.slice(name.lastIndexOf("/") + 1) : name;
+    }}
+
     function shortcode(name) {{
-      return ":" + name.replace(/\\.[^.]+$/, "").replace(/[^a-zA-Z0-9_]+/g, "_").toLowerCase() + ":";
+      return ":" + baseName(name).replace(/\\.[^.]+$/, "").replace(/[^a-zA-Z0-9_]+/g, "_").toLowerCase() + ":";
     }}
 
     function ideaKey(name) {{
+      if (name.includes("/")) return name.slice(0, name.lastIndexOf("/"));
       const stem = name.replace(/\\.[^.]+$/, "");
       return stem.includes("-v-") ? stem.split("-v-")[0] : "misc";
     }}
@@ -516,7 +525,8 @@ def page_html(gallery_dir: Path) -> bytes:
         ship_it: "SHIP IT",
         we_ll_try_it: "WE'LL TRY IT",
       }};
-      return labels[key] || key.replace(/[_-]+/g, " ").toUpperCase();
+      if (labels[key]) return labels[key];
+      return key.replace(/^\\d{{4}}-\\d{{2}}-\\d{{2}}-/, "").replace(/[_-]+/g, " ").toUpperCase();
     }}
 
     function saveActive() {{
@@ -583,7 +593,7 @@ def page_html(gallery_dir: Path) -> bytes:
     async function downloadImage(name) {{
       const item = latestImages.find((candidate) => candidate.name === name);
       if (!item) return;
-      const suggestedName = item.name.replace(/[^a-zA-Z0-9_.-]+/g, "_");
+      const suggestedName = baseName(item.name).replace(/[^a-zA-Z0-9_.-]+/g, "_");
       const response = await fetch(versionedSrc(item), {{ cache: "no-store" }});
       if (!response.ok) throw new Error("Could not download " + item.name);
       const blob = await response.blob();
@@ -626,7 +636,7 @@ def page_html(gallery_dir: Path) -> bytes:
       card.innerHTML = `
         <div class="stage"><img src="${{src}}" alt="${{item.name}}"></div>
         <div class="details">
-          <div class="name">${{item.name}}</div>
+          <div class="name">${{baseName(item.name)}}</div>
           <div class="facts"><span>${{shortcode(item.name)}}</span><span>${{kb(item.bytes)}}</span></div>
           <div class="state"></div>
           <div class="sizes">
@@ -866,9 +876,11 @@ class GalleryHandler(SimpleHTTPRequestHandler):
             return
 
         if parsed.path.startswith("/files/"):
-            name = Path(unquote(parsed.path.removeprefix("/files/"))).name
-            target = self.gallery_dir / name
-            if target.is_file() and target.suffix.lower() in IMAGE_EXTENSIONS:
+            rel = unquote(parsed.path.removeprefix("/files/"))
+            base = self.gallery_dir.resolve()
+            target = (base / rel).resolve()
+            within = target == base or base in target.parents
+            if within and target.is_file() and target.suffix.lower() in IMAGE_EXTENSIONS:
                 body = target.read_bytes()
                 content_type = {
                     ".gif": "image/gif",

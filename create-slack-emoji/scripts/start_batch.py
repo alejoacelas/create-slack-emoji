@@ -197,8 +197,11 @@ def main() -> int:
     manifest_path = work_dir / "options.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
 
-    url_path = work_dir / "gallery.url"
-    pid_path = work_dir / "gallery.pid"
+    # Gallery state is shared across runs at the work/ root so a single
+    # persistent gallery is reused for every batch instead of one per run.
+    gallery_state_dir = output_root / "work"
+    url_path = gallery_state_dir / "gallery.url"
+    pid_path = gallery_state_dir / "gallery.pid"
     if process_is_alive(pid_path) and url_path.exists():
         url = url_path.read_text().strip()
         print(f"generated_dir={generated_dir}")

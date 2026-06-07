@@ -76,12 +76,16 @@ def main() -> int:
     skill_dir = Path(__file__).resolve().parents[1]
     run = args.run or f"{date.today().isoformat()}-slack-emoji"
     output_root = (args.output_root or default_output_root(skill_dir)).resolve()
-    generated_dir = output_root / "generated" / run
-    work_dir = output_root / "work" / run
-    generated_dir.mkdir(parents=True, exist_ok=True)
-    work_dir.mkdir(parents=True, exist_ok=True)
+    # One persistent gallery per output root: it serves the whole generated/
+    # tree, so every run's images show up on the same page (grouped by run).
+    # Gallery state (url/pid/log) lives at the work/ root, not per run.
+    gallery_dir = output_root / "generated"
+    gallery_state_dir = output_root / "work"
+    run_work_dir = gallery_state_dir / run
+    (gallery_dir / run).mkdir(parents=True, exist_ok=True)
+    run_work_dir.mkdir(parents=True, exist_ok=True)
     for name in ("sheets", "slices", "alpha", "prepared", "retired"):
-        (work_dir / name).mkdir(exist_ok=True)
+        (run_work_dir / name).mkdir(exist_ok=True)
 
     port = available_port(args.host, args.port)
     serve_script = skill_dir / "scripts" / "serve_gallery.py"
@@ -89,24 +93,24 @@ def main() -> int:
     cmd = [
         sys.executable,
         str(serve_script),
-        str(generated_dir),
+        str(gallery_dir),
         "--host",
         args.host,
         "--port",
         str(port),
     ]
 
-    print(f"generated_dir={generated_dir}", flush=True)
-    print(f"work_dir={work_dir}", flush=True)
+    print(f"generated_dir={gallery_dir}", flush=True)
+    print(f"work_dir={run_work_dir}", flush=True)
     print(f"url={url}", flush=True)
-    (work_dir / "gallery.url").write_text(f"{url}\n")
+    (gallery_state_dir / "gallery.url").write_text(f"{url}\n")
 
     if args.foreground:
         if args.open:
             webbrowser.open(url)
         return subprocess.call(cmd)
 
-    log_path = work_dir / "gallery.log"
+    log_path = gallery_state_dir / "gallery.log"
     log = log_path.open("ab")
     process = subprocess.Popen(
         cmd,
@@ -116,7 +120,7 @@ def main() -> int:
         stderr=subprocess.STDOUT,
         start_new_session=True,
     )
-    (work_dir / "gallery.pid").write_text(f"{process.pid}\n")
+    (gallery_state_dir / "gallery.pid").write_text(f"{process.pid}\n")
     wait_until_ready(url, process, log_path)
     print(f"pid={process.pid}", flush=True)
     print(f"log={log_path}", flush=True)
